@@ -230,6 +230,10 @@ interface ISpoke is IAccessManaged, IIntentConsumer, IExtSload, IMulticall {
     uint256 drawnAmount
   );
 
+  /// @notice Emitted when the SolvencyRegistry address is set or updated.
+  /// @param solvencyRegistry The new SolvencyRegistry address.
+  event SetSolvencyRegistry(address solvencyRegistry);
+
   /// @notice Emitted on the repay action.
   /// @param reserveId The reserve identifier of the underlying asset.
   /// @param caller The transaction initiator who is repaying the underlying asset.
@@ -371,6 +375,13 @@ interface ISpoke is IAccessManaged, IIntentConsumer, IExtSload, IMulticall {
 
   /// @notice Thrown for an invalid zero address.
   error InvalidAddress();
+
+  /// @notice Thrown when a consortium-gated `borrow()` is attempted before `setSolvencyRegistry` has been called.
+  error SolvencyRegistryNotSet();
+
+  /// @notice Thrown when the session consumed by SolvencyRegistry for `(onBehalfOf, reserveId, amount)` does not
+  /// match the `solvencySessionId` the caller supplied -- a defense-in-depth sanity check.
+  error SolvencySessionMismatch();
 
   /// @notice Thrown when the oracle decimals are not 8 in the constructor.
   error InvalidOracleDecimals();
@@ -522,6 +533,45 @@ interface ISpoke is IAccessManaged, IIntentConsumer, IExtSload, IMulticall {
     uint256 amount,
     address onBehalfOf
   ) external returns (uint256, uint256);
+
+  /// @notice Consortium-gated variant of `borrow()` (thesis extension, not part of upstream Aave V4): identical
+  /// behaviour, but first requires and consumes an APPROVED SolvencyRegistry session matching
+  /// `(onBehalfOf, reserveId, amount)` before drawing from the Hub. Reverts `SolvencyRegistryNotSet` if no
+  /// registry is configured, or `SolvencySessionMismatch` if `solvencySessionId` does not match the session
+  /// actually consumed for this client/reserve.
+  /// @param reserveId The identifier of the reserve.
+  /// @param amount The amount of asset to borrow; must not exceed the approved session's amount ceiling.
+  /// @param onBehalfOf The owner of the position against which debt is generated.
+  /// @param solvencySessionId The APPROVED SolvencyRegistry session authorizing this borrow.
+  /// @return The amount of shares borrowed.
+  /// @return The amount of assets borrowed.
+  function borrow(
+    uint256 reserveId,
+    uint256 amount,
+    address onBehalfOf,
+    bytes32 solvencySessionId
+  ) external returns (uint256, uint256);
+
+  /// @notice Opens a SolvencyRegistry session for an intended future borrow, so the off-chain MPC consortium can
+  /// begin computing a verdict (thesis extension, not part of upstream Aave V4).
+  /// @dev Caller must be `onBehalfOf` or an authorized position manager for `onBehalfOf`.
+  /// @param reserveId The identifier of the reserve the eventual borrow would draw from.
+  /// @param amount The intended loan amount ceiling.
+  /// @param onBehalfOf The owner of the position the check is being run for.
+  /// @return sessionId The newly opened SolvencyRegistry session identifier.
+  function requestBorrowSolvencyCheck(
+    uint256 reserveId,
+    uint256 amount,
+    address onBehalfOf
+  ) external returns (bytes32 sessionId);
+
+  /// @notice Sets or updates the SolvencyRegistry address gating the consortium-checked `borrow()` overload
+  /// (thesis extension, not part of upstream Aave V4). Restricted.
+  /// @param solvencyRegistry_ The new SolvencyRegistry address.
+  function setSolvencyRegistry(address solvencyRegistry_) external;
+
+  /// @notice Returns the currently configured SolvencyRegistry address, or the zero address if unset.
+  function solvencyRegistry() external view returns (address);
 
   /// @notice Repays a specified amount of underlying asset to a given reserve.
   /// @dev It reverts if the reserve associated with the given reserve identifier is not listed.

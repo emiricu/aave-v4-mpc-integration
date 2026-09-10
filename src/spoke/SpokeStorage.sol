@@ -35,6 +35,15 @@ abstract contract SpokeStorage {
   /// @dev Map of position manager addresses to their configuration data.
   mapping(address positionManager => ISpoke.PositionManagerConfig) internal _positionManager;
 
+  /// @dev Address of the SolvencyRegistry contract gating the consortium-checked borrow() entrypoint.
+  /// @dev Thesis extension, not part of upstream Aave V4. Mutable (not immutable) because Spoke is deployed
+  /// behind an upgradeable proxy (see SpokeInstance) whose constructor only sets true immutables; this is set
+  /// once post-deploy via a restricted setter instead, to avoid rippling a new constructor parameter through the
+  /// whole deploy-procedure/batch machinery for a thesis-scoped addition. address(0) means unset: the gated
+  /// borrow() overload and requestBorrowSolvencyCheck() are unusable until configured, but the original
+  /// unmodified borrow(reserveId, amount, onBehalfOf) keeps working regardless.
+  address internal _solvencyRegistry;
+
   /// @dev Reserved storage space to allow for future layout updates.
-  uint256[50] private __gap;
+  uint256[49] private __gap;
 }

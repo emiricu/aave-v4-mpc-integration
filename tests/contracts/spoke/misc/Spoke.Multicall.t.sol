@@ -247,7 +247,16 @@ contract SpokeMulticall is Base {
     bytes[] memory calls = new bytes[](4);
     calls[0] = abi.encodeCall(ISpoke.supply, (_daiReserveId(spoke1), supplyAmount, alice));
     calls[1] = abi.encodeCall(ISpoke.setUsingAsCollateral, (_daiReserveId(spoke1), true, alice));
-    calls[2] = abi.encodeCall(ISpoke.borrow, (_daiReserveId(spoke1), borrowAmount, alice));
+    // ISpoke.borrow is now overloaded (thesis extension: a consortium-gated 4-arg variant exists
+    // alongside the original 3-arg one) -- even an explicitly typed local variable does not
+    // disambiguate a bare  member access in solc, so encodeWithSelector against an
+    // explicit signature hash is used here instead of encodeCall.
+    calls[2] = abi.encodeWithSelector(
+      bytes4(keccak256('borrow(uint256,uint256,address)')),
+      _daiReserveId(spoke1),
+      borrowAmount,
+      alice
+    );
     calls[3] = abi.encodeCall(ISpoke.getUserDebt, (_daiReserveId(spoke1), alice));
 
     vm.prank(alice);

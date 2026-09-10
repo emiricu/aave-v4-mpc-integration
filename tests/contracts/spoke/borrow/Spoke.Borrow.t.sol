@@ -16,7 +16,7 @@ contract SpokeBorrowTest is Base {
 
     MockReentrantCaller reentrantCaller = new MockReentrantCaller(
       address(spoke1),
-      ISpoke.borrow.selector
+      bytes4(keccak256('borrow(uint256,uint256,address)'))
     );
 
     vm.mockFunction(
@@ -41,7 +41,7 @@ contract SpokeBorrowTest is Base {
 
     MockReentrantCaller reentrantCaller = new MockReentrantCaller(
       address(spoke1),
-      ISpoke.borrow.selector
+      bytes4(keccak256('borrow(uint256,uint256,address)'))
     );
 
     vm.mockFunction(

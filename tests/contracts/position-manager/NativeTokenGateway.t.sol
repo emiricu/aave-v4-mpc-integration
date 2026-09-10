@@ -508,7 +508,7 @@ contract NativeTokenGatewayTest is Base {
     vm.mockFunction(
       address(spoke1),
       address(reentrantCaller),
-      abi.encodeWithSelector(ISpoke.borrow.selector)
+      abi.encodeWithSelector(bytes4(keccak256('borrow(uint256,uint256,address)')))
     );
     vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
     vm.prank(bob);

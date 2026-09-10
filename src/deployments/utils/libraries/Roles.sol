@@ -5,6 +5,7 @@ import {IHub} from 'src/hub/interfaces/IHub.sol';
 import {ISpoke} from 'src/spoke/interfaces/ISpoke.sol';
 import {IHubConfigurator} from 'src/hub/interfaces/IHubConfigurator.sol';
 import {ISpokeConfigurator} from 'src/spoke/interfaces/ISpokeConfigurator.sol';
+import {ISolvencyRegistry} from 'src/spoke/interfaces/ISolvencyRegistry.sol';
 
 /// @title Roles library
 /// @author Aave Labs
@@ -59,6 +60,13 @@ library Roles {
 
   // SpokeConfigurator roles — granularize as needed with new roles appended
   uint64 public constant SPOKE_CONFIGURATOR_DOMAIN_ADMIN_ROLE = 400;
+
+  // SolvencyRegistry roles - governs the MPC consortium commit-reveal registry (thesis extension, not part of
+  // upstream Aave V4). Namespaced separately from Spoke/SpokeConfigurator on purpose: consortium membership is a
+  // decision for the bank consortium, not for whoever holds Aave protocol governance roles. WHO should actually
+  // hold this role (a dedicated consortium multisig, a subset of Aave governance, a separate DAO) is an open
+  // governance question this codebase deliberately does not resolve - see SolvencyRegistry's contract-level NatSpec.
+  uint64 public constant SOLVENCY_REGISTRY_DOMAIN_ADMIN_ROLE = 500;
 
   // ─── Hub selector getters ───
 
@@ -129,7 +137,7 @@ library Roles {
 
   /// @notice Returns the function selectors associated with the Spoke Configurator role.
   function getSpokeConfiguratorRoleSelectors() internal pure returns (bytes4[] memory) {
-    bytes4[] memory selectors = new bytes4[](7);
+    bytes4[] memory selectors = new bytes4[](8);
     selectors[0] = ISpoke.updateLiquidationConfig.selector;
     selectors[1] = ISpoke.addReserve.selector;
     selectors[2] = ISpoke.updateReserveConfig.selector;
@@ -137,6 +145,23 @@ library Roles {
     selectors[4] = ISpoke.addDynamicReserveConfig.selector;
     selectors[5] = ISpoke.updatePositionManager.selector;
     selectors[6] = ISpoke.updateReservePriceSource.selector;
+    // Thesis extension, not part of upstream Aave V4: wires the SolvencyRegistry pointer setter to the same
+    // role as the rest of Spoke's own configuration surface.
+    selectors[7] = ISpoke.setSolvencyRegistry.selector;
+    return selectors;
+  }
+
+  // --- SolvencyRegistry selector getters ---
+
+  /// @notice Returns the function selectors associated with the SolvencyRegistry Domain Admin role.
+  /// @dev Covers both consortium-membership governance (propose/apply) and manual-review resolution - kept as a
+  /// single role for this prototype rather than splitting into two granular roles, since both concern the same
+  /// underlying decision (who speaks for the consortium). Flagged as a simplification, not a requirement.
+  function getSolvencyRegistryRoleSelectors() internal pure returns (bytes4[] memory) {
+    bytes4[] memory selectors = new bytes4[](3);
+    selectors[0] = ISolvencyRegistry.proposeMembershipChange.selector;
+    selectors[1] = ISolvencyRegistry.applyQueuedMembershipChange.selector;
+    selectors[2] = ISolvencyRegistry.resolveManualReview.selector;
     return selectors;
   }
 

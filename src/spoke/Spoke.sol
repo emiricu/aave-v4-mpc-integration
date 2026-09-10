@@ -24,6 +24,7 @@ import {ExtSload} from 'src/utils/ExtSload.sol';
 import {IAaveOracle} from 'src/spoke/interfaces/IAaveOracle.sol';
 import {IHubBase} from 'src/hub/interfaces/IHubBase.sol';
 import {ISpoke} from 'src/spoke/interfaces/ISpoke.sol';
+import {ISolvencyRegistry} from 'src/spoke/interfaces/ISolvencyRegistry.sol';
 import {SpokeStorage} from 'src/spoke/SpokeStorage.sol';
 
 /// @title Spoke
@@ -276,6 +277,43 @@ abstract contract Spoke is
     uint256 amount,
     address onBehalfOf
   ) external nonReentrant onlyPositionManager(onBehalfOf) returns (uint256, uint256) {
+    return _borrow(reserveId, amount, onBehalfOf);
+  }
+
+  /// @inheritdoc ISpoke
+  /// @dev Consortium-gated entrypoint (thesis extension, not part of upstream Aave V4): identical to the plain
+  /// `borrow()` above except it first requires `solvencySessionId` to be an APPROVED, unexpired, unconsumed
+  /// SolvencyRegistry session for this exact `(onBehalfOf, reserveId, amount)`, consuming it in the same
+  /// transaction so it can never authorize a second borrow. `borrow()` (3-arg) remains available unchanged --
+  /// upstream Aave V4 behaviour, kept working for reserves/callers outside the MPC consortium flow, or during a
+  /// migration. Making the consortium check the ONLY path system-wide would require either changing the 3-arg
+  /// signature (breaking the existing, unmodified spoke test suite across borrow/liquidation/multi-hub/etc.) or
+  /// restricting which PositionManager callers may reach the 3-arg path at the deployment/governance layer --
+  /// both explicitly out of scope for this thesis-scoped change, flagged here rather than silently decided.
+  function borrow(
+    uint256 reserveId,
+    uint256 amount,
+    address onBehalfOf,
+    bytes32 solvencySessionId
+  ) external nonReentrant onlyPositionManager(onBehalfOf) returns (uint256, uint256) {
+    require(_solvencyRegistry != address(0), SolvencyRegistryNotSet());
+    bytes32 consumedSessionId = ISolvencyRegistry(_solvencyRegistry).consumeApprovedSession(
+      onBehalfOf,
+      reserveId,
+      amount
+    );
+    require(consumedSessionId == solvencySessionId, SolvencySessionMismatch());
+
+    return _borrow(reserveId, amount, onBehalfOf);
+  }
+
+  /// @dev Shared implementation for both `borrow()` overloads above -- the actual Hub draw / LTV / risk-premium
+  /// logic exists exactly once, so the gated and ungated entrypoints can never drift from each other.
+  function _borrow(
+    uint256 reserveId,
+    uint256 amount,
+    address onBehalfOf
+  ) internal returns (uint256, uint256) {
     Reserve storage reserve = _reserves.get(reserveId);
     UserPosition storage userPosition = _userPositions[onBehalfOf][reserveId];
     PositionStatus storage positionStatus = _positionStatus[onBehalfOf];
@@ -299,6 +337,35 @@ abstract contract Spoke is
     emit Borrow(reserveId, msg.sender, onBehalfOf, drawnShares, amount);
 
     return (drawnShares, amount);
+  }
+
+  /// @inheritdoc ISpoke
+  /// @dev Thesis extension. Opens a SolvencyRegistry session so the off-chain MPC consortium can start computing;
+  /// the caller must separately call the 4-arg `borrow()` overload once the session is APPROVED.
+  function requestBorrowSolvencyCheck(
+    uint256 reserveId,
+    uint256 amount,
+    address onBehalfOf
+  ) external onlyPositionManager(onBehalfOf) returns (bytes32 sessionId) {
+    require(_solvencyRegistry != address(0), SolvencyRegistryNotSet());
+    sessionId = ISolvencyRegistry(_solvencyRegistry).startSession(onBehalfOf, reserveId, amount);
+  }
+
+  /// @inheritdoc ISpoke
+  /// @dev Thesis extension. Mutable rather than immutable: Spoke is deployed behind an upgradeable proxy whose
+  /// constructor only sets true immutables (see SpokeInstance); wiring this through the constructor would ripple
+  /// a new parameter through the whole deploy-procedure/batch machinery for a thesis-scoped addition, so it is
+  /// set once post-deploy instead. No "set once" guard: an authorized governor may repoint this (e.g. migrating
+  /// to a redeployed SolvencyRegistry), consistent with how other Spoke configuration is updatable via `restricted`.
+  function setSolvencyRegistry(address solvencyRegistry_) external restricted {
+    require(solvencyRegistry_ != address(0), InvalidAddress());
+    _solvencyRegistry = solvencyRegistry_;
+    emit SetSolvencyRegistry(solvencyRegistry_);
+  }
+
+  /// @inheritdoc ISpoke
+  function solvencyRegistry() external view returns (address) {
+    return _solvencyRegistry;
   }
 
   /// @inheritdoc ISpoke
