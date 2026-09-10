@@ -17,7 +17,7 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
 
     address node3 = makeAddr('node3');
     vm.prank(governor);
-    registry.proposeMembershipChange(true, node3, keccak256('node3-cert'));
+    registry.proposeMembershipChange(true, node3, keccak256('node3-cert'), 1 ether);
 
     // Still SESSION_ACTIVE, not yet applied: the queued change has not touched the live participant set.
     assertEq(uint256(registry.phase()), uint256(ISolvencyRegistry.RegistryPhase.SESSION_ACTIVE));
@@ -64,7 +64,7 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
 
     address node3 = makeAddr('node3');
     vm.prank(governor);
-    registry.proposeMembershipChange(true, node3, keccak256('node3-cert'));
+    registry.proposeMembershipChange(true, node3, keccak256('node3-cert'), 1 ether);
 
     assertEq(uint256(registry.phase()), uint256(ISolvencyRegistry.RegistryPhase.MEMBERSHIP_APPLYING));
 
@@ -77,18 +77,18 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
 
   function test_removeParticipant_worksAndCannotRemoveLastOne() public {
     vm.startPrank(governor);
-    registry.proposeMembershipChange(false, node2, bytes32(0));
+    registry.proposeMembershipChange(false, node2, bytes32(0), 0);
     registry.applyQueuedMembershipChange();
     assertFalse(registry.isParticipant(node2));
     assertEq(registry.getParticipants().length, 2);
 
-    registry.proposeMembershipChange(false, node1, bytes32(0));
+    registry.proposeMembershipChange(false, node1, bytes32(0), 0);
     registry.applyQueuedMembershipChange();
     assertEq(registry.getParticipants().length, 1);
 
     // Removing the last remaining participant must revert -- safety floor.
     vm.expectRevert(ISolvencyRegistry.ParticipantNotRegistered.selector);
-    registry.proposeMembershipChange(false, node0, bytes32(0));
+    registry.proposeMembershipChange(false, node0, bytes32(0), 0);
     vm.stopPrank();
   }
 
@@ -96,12 +96,12 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
     address stranger = makeAddr('stranger');
     vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, stranger));
     vm.prank(stranger);
-    registry.proposeMembershipChange(true, makeAddr('node3'), bytes32(0));
+    registry.proposeMembershipChange(true, makeAddr('node3'), bytes32(0), 1 ether);
   }
 
   function test_applyQueuedMembershipChange_revertsWith_AccessManagedUnauthorized_forNonGovernor() public {
     vm.prank(governor);
-    registry.proposeMembershipChange(true, makeAddr('node3'), bytes32(0));
+    registry.proposeMembershipChange(true, makeAddr('node3'), bytes32(0), 1 ether);
 
     address stranger = makeAddr('stranger');
     vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, stranger));
@@ -117,5 +117,17 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
     vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, stranger));
     vm.prank(stranger);
     registry.resolveManualReview(sessionId, true);
+  }
+
+  function test_proposeMembershipChange_revertsWith_InvalidDepositDeclared_zeroOnAddition() public {
+    vm.prank(governor);
+    vm.expectRevert(ISolvencyRegistry.InvalidDepositDeclared.selector);
+    registry.proposeMembershipChange(true, makeAddr('node3'), bytes32(0), 0);
+  }
+
+  function test_proposeMembershipChange_revertsWith_InvalidDepositDeclared_nonzeroOnRemoval() public {
+    vm.prank(governor);
+    vm.expectRevert(ISolvencyRegistry.InvalidDepositDeclared.selector);
+    registry.proposeMembershipChange(false, node2, bytes32(0), 1);
   }
 }

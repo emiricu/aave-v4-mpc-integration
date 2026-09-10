@@ -89,11 +89,19 @@ interface ISolvencyRegistry {
   /// @param certificateRef Opaque off-chain reference (e.g. a hash of the party's MP-SPDZ SSL certificate) recorded
   /// for audit purposes only -- the actual certificate material is never published on-chain, consistent with the
   /// existing out-of-band certificate exchange already used by the off-chain MPC node network.
+  /// @param depositDeclared For an addition only (ignored/must be 0 for a removal): a declared amount, recorded for
+  /// display/audit only. This is NOT an economic requirement or a minimum-deposit rule -- the Hub's own supply()
+  /// already imposes no minimum, and this contract never moves or escrows any funds. It exists purely as a cheap
+  /// anti-spam check on proposeMembershipChange (a bare require(> 0), see that function) so a governance proposal
+  /// cannot be a fully-zeroed no-op call; the actual Hub deposit, for whatever amount the new bank chooses, is a
+  /// separate, later, ordinary supply() call the bank's own wallet makes -- conceptually linked to joining the
+  /// consortium, architecturally independent of it.
   struct PendingChange {
     bool exists;
     bool isAddition;
     address participant;
     bytes32 certificateRef;
+    uint256 depositDeclared;
   }
 
   // --- Events ---
@@ -135,13 +143,13 @@ interface ISolvencyRegistry {
   event SessionConsumed(bytes32 indexed sessionId);
 
   /// @notice Emitted when a membership change is proposed (whether queued or immediately made ready to apply).
-  event MembershipChangeQueued(bool isAddition, address indexed participant, bytes32 certificateRef);
+  event MembershipChangeQueued(bool isAddition, address indexed participant, bytes32 certificateRef, uint256 depositDeclared);
 
   /// @notice Emitted when the registry transitions to MEMBERSHIP_APPLYING (queued change now safe to apply).
   event MembershipChangeReadyToApply(bool isAddition, address indexed participant);
 
   /// @notice Emitted when a queued membership change is actually applied to `participants`.
-  event MembershipChangeApplied(bool isAddition, address indexed participant, bytes32 certificateRef);
+  event MembershipChangeApplied(bool isAddition, address indexed participant, bytes32 certificateRef, uint256 depositDeclared);
 
   // --- Errors ---
 
@@ -213,6 +221,10 @@ interface ISolvencyRegistry {
   /// @notice Thrown when proposing to remove a participant that is not registered, or removing the last one.
   error ParticipantNotRegistered();
 
+  /// @notice Thrown when `depositDeclared` is invalid for the proposed change (zero for an addition, or nonzero
+  /// for a removal).
+  error InvalidDepositDeclared();
+
   /// @notice Thrown when constructor arguments are invalid (zero addresses, empty/mismatched arrays, zero
   /// durations).
   error InvalidConstructorArgs();
@@ -282,10 +294,14 @@ interface ISolvencyRegistry {
   /// merely a same-transaction detail). If a session is active, the change is queued and applied automatically
   /// once that session ends (approved, rejected, or blocked by timeout). Reverts `ChangeAlreadyQueued` if a change
   /// is already queued or ready to apply.
+  /// @param depositDeclared For `isAddition == true` only: must be nonzero (`InvalidDepositDeclared` otherwise) --
+  /// a pure anti-spam check, not an economic minimum, see `PendingChange.depositDeclared`. Must be 0 for a removal
+  /// (`InvalidDepositDeclared` otherwise), since it is meaningless there.
   function proposeMembershipChange(
     bool isAddition,
     address participant,
-    bytes32 certificateRef
+    bytes32 certificateRef,
+    uint256 depositDeclared
   ) external;
 
   /// @notice Applies the queued membership change. Only callable while `RegistryPhase` is MEMBERSHIP_APPLYING.
@@ -303,6 +319,10 @@ interface ISolvencyRegistry {
 
   /// @notice Returns whether `account` is currently a registered consortium participant.
   function isParticipant(address account) external view returns (bool);
+
+  /// @notice Returns the declared deposit recorded for `account` when it was added (0 if never set/removed) --
+  /// display/audit only, see `PendingChange.depositDeclared`.
+  function declaredDeposit(address account) external view returns (uint256);
 
   /// @notice Returns the current registry-wide phase.
   function phase() external view returns (RegistryPhase);

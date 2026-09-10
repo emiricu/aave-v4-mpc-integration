@@ -55,6 +55,7 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
   address[] private _participants;
   mapping(address => bool) private _isParticipantMap;
   mapping(address => bytes32) private _certificateRef;
+  mapping(address => uint256) private _declaredDeposit;
   PendingChange private _queuedChange;
 
   mapping(bytes32 => Session) private _sessions;
@@ -265,18 +266,22 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
   function proposeMembershipChange(
     bool isAddition,
     address participant,
-    bytes32 certificateRef
+    bytes32 certificateRef,
+    uint256 depositDeclared
   ) external restricted {
     require(!_queuedChange.exists, ChangeAlreadyQueued());
     if (isAddition) {
       require(!_isParticipantMap[participant], ParticipantAlreadyRegistered());
+      // Anti-spam only, not an economic minimum -- see PendingChange.depositDeclared's NatSpec.
+      require(depositDeclared > 0, InvalidDepositDeclared());
     } else {
       require(_isParticipantMap[participant], ParticipantNotRegistered());
       require(_participants.length > 1, ParticipantNotRegistered());
+      require(depositDeclared == 0, InvalidDepositDeclared());
     }
 
-    _queuedChange = PendingChange(true, isAddition, participant, certificateRef);
-    emit MembershipChangeQueued(isAddition, participant, certificateRef);
+    _queuedChange = PendingChange(true, isAddition, participant, certificateRef, depositDeclared);
+    emit MembershipChangeQueued(isAddition, participant, certificateRef, depositDeclared);
 
     if (_phase == RegistryPhase.IDLE) {
       _phase = RegistryPhase.MEMBERSHIP_APPLYING;
@@ -300,10 +305,12 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
     if (change.isAddition) {
       _isParticipantMap[change.participant] = true;
       _certificateRef[change.participant] = change.certificateRef;
+      _declaredDeposit[change.participant] = change.depositDeclared;
       _participants.push(change.participant);
     } else {
       _isParticipantMap[change.participant] = false;
       delete _certificateRef[change.participant];
+      delete _declaredDeposit[change.participant];
       uint256 len = _participants.length;
       for (uint256 i = 0; i < len; i++) {
         if (_participants[i] == change.participant) {
@@ -317,7 +324,12 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
     delete _queuedChange;
     _phase = RegistryPhase.IDLE;
 
-    emit MembershipChangeApplied(change.isAddition, change.participant, change.certificateRef);
+    emit MembershipChangeApplied(
+      change.isAddition,
+      change.participant,
+      change.certificateRef,
+      change.depositDeclared
+    );
   }
 
   // ─── Internal ───
@@ -377,6 +389,11 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
   /// @inheritdoc ISolvencyRegistry
   function isParticipant(address account) external view returns (bool) {
     return _isParticipantMap[account];
+  }
+
+  /// @inheritdoc ISolvencyRegistry
+  function declaredDeposit(address account) external view returns (uint256) {
+    return _declaredDeposit[account];
   }
 
   /// @inheritdoc ISolvencyRegistry
