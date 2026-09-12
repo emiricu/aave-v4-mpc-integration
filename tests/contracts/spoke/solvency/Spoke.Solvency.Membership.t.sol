@@ -34,6 +34,7 @@ contract SpokeSolvencyMembershipTest is SolvencyTestBase {
     _commit(sessionId, node0, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s0'));
     _commit(sessionId, node1, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s1'));
     _commit(sessionId, node2, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s2'));
+    _rollToRevealTarget();
     _reveal(sessionId, node0, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s0'));
     _reveal(sessionId, node1, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s1'));
     _reveal(sessionId, node2, ESITO_APPROVATO, POLICY_VERSION, MPC_TIMESTAMP, keccak256('s2'));

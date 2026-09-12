@@ -51,6 +51,22 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
   /// finalizing, before it expires and can no longer be used to authorize a `borrow()`.
   uint256 public immutable APPROVAL_VALIDITY_SECONDS;
 
+  /// @notice Number of blocks after `startSession` at which `Session.revealTargetBlock` is fixed -- the
+  /// synchronized point before which no participant's `submitReveal` is accepted, so the family's reveal always
+  /// happens together rather than as each node happens to finish.
+  /// @dev Margin trade-off, deliberately left a deployment-specific constructor argument rather than a hardcoded
+  /// constant, because it depends on real off-chain timing this contract cannot observe: real MP-SPDZ computation
+  /// time for this deployment has been observed between ~45s and 300s+ depending on load and party count, and
+  /// COMMIT itself cannot even begin until that computation finishes. Set this offset too small (in block-time
+  /// terms) and it becomes a no-op -- commits alone will not have arrived yet, so the floor is harmless but
+  /// pointless. Set it too close to `SESSION_TIMEOUT_SECONDS` and there is no room left for the reveal
+  /// transactions themselves to land before `checkTimeout` can fire -- a session that was otherwise on track would
+  /// be blocked purely for lack of margin, not for any real failure. There is no way for this contract to derive a
+  /// correct value on its own (it cannot observe off-chain compute time or real Sepolia block time, only
+  /// `block.number` itself), so the deploying operator must choose it with both figures in mind for their own
+  /// deployment -- documented here rather than silently defaulted.
+  uint256 public immutable REVEAL_TARGET_BLOCK_OFFSET;
+
   RegistryPhase private _phase;
   address[] private _participants;
   mapping(address => bool) private _isParticipantMap;
@@ -79,25 +95,29 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
   /// order as `initialParticipants_`.
   /// @param sessionTimeoutSeconds_ See `SESSION_TIMEOUT_SECONDS`.
   /// @param approvalValiditySeconds_ See `APPROVAL_VALIDITY_SECONDS`.
+  /// @param revealTargetBlockOffset_ See `REVEAL_TARGET_BLOCK_OFFSET`.
   constructor(
     address authority_,
     address spoke_,
     address[] memory initialParticipants_,
     bytes32[] memory initialCertificateRefs_,
     uint256 sessionTimeoutSeconds_,
-    uint256 approvalValiditySeconds_
+    uint256 approvalValiditySeconds_,
+    uint256 revealTargetBlockOffset_
   ) AccessManaged(authority_) {
     require(
       spoke_ != address(0) &&
         initialParticipants_.length > 0 &&
         initialParticipants_.length == initialCertificateRefs_.length &&
         sessionTimeoutSeconds_ > 0 &&
-        approvalValiditySeconds_ > 0,
+        approvalValiditySeconds_ > 0 &&
+        revealTargetBlockOffset_ > 0,
       InvalidConstructorArgs()
     );
     SPOKE = spoke_;
     SESSION_TIMEOUT_SECONDS = sessionTimeoutSeconds_;
     APPROVAL_VALIDITY_SECONDS = approvalValiditySeconds_;
+    REVEAL_TARGET_BLOCK_OFFSET = revealTargetBlockOffset_;
     for (uint256 i = 0; i < initialParticipants_.length; i++) {
       address participant = initialParticipants_[i];
       require(participant != address(0) && !_isParticipantMap[participant], InvalidConstructorArgs());
@@ -127,11 +147,12 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
     session.reserveId = reserveId;
     session.amount = amount;
     session.deadline = block.timestamp + SESSION_TIMEOUT_SECONDS;
+    session.revealTargetBlock = block.number + REVEAL_TARGET_BLOCK_OFFSET;
     session.participants = _participants;
 
     _phase = RegistryPhase.SESSION_ACTIVE;
 
-    emit SessionStarted(sessionId, client, reserveId, amount, session.participants);
+    emit SessionStarted(sessionId, client, reserveId, amount, session.participants, session.revealTargetBlock);
   }
 
   /// @inheritdoc ISolvencyRegistry
@@ -192,6 +213,7 @@ contract SolvencyRegistry is AccessManaged, ISolvencyRegistry {
     require(_phase == RegistryPhase.SESSION_ACTIVE, RegistryBusy());
     Session storage session = _sessions[sessionId];
     require(session.phase == SessionPhase.REVEAL, NotInRevealPhase());
+    require(block.number >= session.revealTargetBlock, RevealTargetNotReached());
     require(block.timestamp <= session.deadline, SessionExpired());
     require(_isExpectedParticipant(session, msg.sender), NotExpectedParticipant());
     require(!_hasRevealed[sessionId][msg.sender], AlreadyRevealed());

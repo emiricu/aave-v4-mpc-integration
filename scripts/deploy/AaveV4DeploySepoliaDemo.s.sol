@@ -191,7 +191,11 @@ contract AaveV4DeploySepoliaDemo is Script {
         initialParticipants_: nodes,
         initialCertificateRefs_: nodeCertRefs,
         sessionTimeoutSeconds_: 1200,
-        approvalValiditySeconds_: 3600
+        approvalValiditySeconds_: 3600,
+        // ~720s (60 blocks * ~12s/block on Sepolia): comfortably after real observed MPC compute times
+        // (45-300s+) so the family has actually finished committing by then, and leaves ~480s of margin
+        // before the 1200s SESSION_TIMEOUT_SECONDS deadline for the reveal transactions themselves to land.
+        revealTargetBlockOffset_: 60
       })
     );
 
