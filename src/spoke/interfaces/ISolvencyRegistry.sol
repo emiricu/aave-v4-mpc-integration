@@ -58,10 +58,14 @@ interface ISolvencyRegistry {
   /// @param esito The agreed verdict once REVEAL completes: 0 = RIFIUTATO, 1 = REVIEW_MANUALE, 2 = APPROVATO.
   /// @param consumed Whether an APPROVED session has already been consumed by a matching `borrow()` call.
   /// @param deadline `block.timestamp` after which `checkTimeout` may move a still-COMMIT/REVEAL session to BLOCKED.
-  /// @param revealTargetBlock The block number, fixed once at `startSession` and never recomputed, at or after
-  /// which `submitReveal` is accepted -- a public, verifiable synchronization point every participant knows in
-  /// advance, so no node can reveal before the rest of the family has even finished its off-chain computation.
-  /// See `SolvencyRegistry.REVEAL_TARGET_BLOCK_OFFSET`'s NatSpec for the margin trade-off against `deadline`.
+  /// This is the only time bound reveal is subject to -- there is deliberately no separate "earliest reveal block":
+  /// commit-before-reveal already prevents a participant from tailoring its reveal to what others committed (the
+  /// commit hash binds the tuple before any reveal is visible), `msg.sender` already authenticates who is
+  /// revealing, and `RevealDisagreement`/`CommitMismatch` already reject any inconsistent or forged tuple. A
+  /// public "synchronization block" added no verifiable guarantee beyond what those three properties already give,
+  /// since Ethereum does not guarantee a transaction lands in any particular block -- it only added a liveness
+  /// hazard (an early node's reveal transaction could be stuck waiting on a target block that a chain reorg or gas
+  /// spike delays past `deadline`) for no corresponding security benefit, so it was removed.
   /// @param finalizedAt `block.timestamp` at which the session reached APPROVED (directly, or via manual review) --
   /// used by `consumeApprovedSession` to enforce `APPROVAL_VALIDITY_SECONDS`.
   /// @param participants Frozen snapshot of the consortium's registered addresses at `startSession` time -- this
@@ -80,7 +84,6 @@ interface ISolvencyRegistry {
     uint8 esito;
     bool consumed;
     uint256 deadline;
-    uint256 revealTargetBlock;
     uint256 finalizedAt;
     address[] participants;
     uint256 commitCount;
@@ -112,15 +115,12 @@ interface ISolvencyRegistry {
   // --- Events ---
 
   /// @notice Emitted when a new solvency session is opened.
-  /// @param revealTargetBlock See `Session.revealTargetBlock` -- known to every participant from this same event,
-  /// before any of them has even started committing.
   event SessionStarted(
     bytes32 indexed sessionId,
     address indexed client,
     uint256 indexed reserveId,
     uint256 amount,
-    address[] participants,
-    uint256 revealTargetBlock
+    address[] participants
   );
 
   /// @notice Emitted when a participant submits its commit for a session.
@@ -190,10 +190,6 @@ interface ISolvencyRegistry {
 
   /// @notice Thrown when `submitCommit`/`submitReveal` is attempted after the session's deadline has elapsed.
   error SessionExpired();
-
-  /// @notice Thrown when `submitReveal` is attempted before `Session.revealTargetBlock` is reached -- reveal is a
-  /// synchronized, family-wide event, never a race to be first.
-  error RevealTargetNotReached();
 
   /// @notice Thrown when `checkTimeout` is called before the session's deadline has elapsed.
   error SessionNotExpired();
@@ -277,9 +273,7 @@ interface ISolvencyRegistry {
   function submitCommit(bytes32 sessionId, bytes32 commitHash) external;
 
   /// @notice Reveals this participant's previously committed values for `sessionId`.
-  /// @dev Reverts `RevealTargetNotReached` before `block.number` reaches `Session.revealTargetBlock` -- reveal
-  /// only ever happens at or after the synchronization point fixed at `startSession`, never earlier. Reverts
-  /// `CommitMismatch` if the tuple does not hash to this participant's stored commit. Reverts
+  /// @dev Reverts `CommitMismatch` if the tuple does not hash to this participant's stored commit. Reverts
   /// `RevealDisagreement` if a prior revealer already established a different agreed tuple for this session -- the
   /// call reverts entirely rather than persisting anything partial or inconsistent.
   function submitReveal(

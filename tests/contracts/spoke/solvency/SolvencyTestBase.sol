@@ -19,10 +19,6 @@ abstract contract SolvencyTestBase is Base {
 
   uint256 internal constant SESSION_TIMEOUT = 1200;
   uint256 internal constant APPROVAL_VALIDITY = 3600;
-  /// @dev Small on purpose: tests advance past it with a single vm.roll, they don't need to model real
-  /// Sepolia block timing (see REVEAL_TARGET_BLOCK_OFFSET's own NatSpec in SolvencyRegistry.sol for the real
-  /// deployment's margin reasoning, which this constant deliberately does not attempt to mirror).
-  uint256 internal constant REVEAL_TARGET_BLOCK_OFFSET = 5;
 
   function setUp() public virtual override {
     super.setUp();
@@ -48,8 +44,7 @@ abstract contract SolvencyTestBase is Base {
       initialParticipants_: participants,
       initialCertificateRefs_: certs,
       sessionTimeoutSeconds_: SESSION_TIMEOUT,
-      approvalValiditySeconds_: APPROVAL_VALIDITY,
-      revealTargetBlockOffset_: REVEAL_TARGET_BLOCK_OFFSET
+      approvalValiditySeconds_: APPROVAL_VALIDITY
     });
 
     // Base._configureHubsAndSpokes() (part of super.setUp()) grants itself SPOKE_CONFIGURATOR_ROLE only
@@ -101,13 +96,6 @@ abstract contract SolvencyTestBase is Base {
     registry.submitCommit(sessionId, commitHash);
   }
 
-  /// @dev Advances past this session's revealTargetBlock -- every test that reveals must call this (or
-  /// otherwise advance the block number) after committing and before revealing, now that reveal is gated on
-  /// the family-wide synchronized reveal block fixed at startSession.
-  function _rollToRevealTarget() internal {
-    vm.roll(block.number + REVEAL_TARGET_BLOCK_OFFSET);
-  }
-
   /// @dev Submits a reveal for `participant`.
   function _reveal(
     bytes32 sessionId,
@@ -140,8 +128,6 @@ abstract contract SolvencyTestBase is Base {
     _commit(sessionId, node0, esito, policyVersion, timestamp, salt0);
     _commit(sessionId, node1, esito, policyVersion, timestamp, salt1);
     _commit(sessionId, node2, esito, policyVersion, timestamp, salt2);
-
-    _rollToRevealTarget();
 
     _reveal(sessionId, node0, esito, policyVersion, timestamp, salt0);
     _reveal(sessionId, node1, esito, policyVersion, timestamp, salt1);

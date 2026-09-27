@@ -9,7 +9,8 @@ import {SolvencyRegistry} from 'src/spoke/SolvencyRegistry.sol';
 
 /// @notice Minimal redeploy: SPOKE is immutable on SolvencyRegistry, so the existing (already
 /// working, unrelated to this change) Spoke/Hub/reserve deployment cannot be repointed in place --
-/// only a fresh SolvencyRegistry can pick up the new revealTargetBlockOffset_ constructor param.
+/// only a fresh SolvencyRegistry can pick up the now-shorter constructor (revealTargetBlockOffset_
+/// removed, see SolvencyRegistry's own NatSpec for the security rationale).
 /// Does NOT touch Spoke/Hub/reserve at all (unlike FixSpokeInstance.s.sol, which redeployed the
 /// whole spoke instance for an unrelated bug) -- only deploys the new registry and re-points the
 /// EXISTING spoke at it via setSolvencyRegistry.
@@ -38,8 +39,7 @@ contract RedeploySolvencyRegistry is Script {
         initialParticipants_: nodes,
         initialCertificateRefs_: nodeCertRefs,
         sessionTimeoutSeconds_: 1200,
-        approvalValiditySeconds_: 3600,
-        revealTargetBlockOffset_: 60
+        approvalValiditySeconds_: 3600
       })
     );
 
