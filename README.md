@@ -1,3 +1,20 @@
+# Aave V4 + gate di solvibilità consortile via MPC
+
+Questo repository è un fork privato di [Aave V4](https://github.com/aave-dao/aave-v4), usato come base per un progetto di tesi: un'estensione dello Spoke che subordina l'erogazione di un prestito a un verdetto di solvibilità calcolato off-chain da un consorzio di banche tramite calcolo multi-party (MPC), e pubblicato on-chain con un meccanismo di commit-reveal senza alcun relayer/oracolo intermediario — ogni banca invia direttamente le proprie transazioni. Il calcolo MPC vero e proprio vive nel repository gemello [mp-spdz-collateral-risk](https://github.com/emiricu/mp-spdz-collateral-risk) (un fork di MP-SPDZ).
+
+**Documentazione completa dell'estensione**: [`docs/solvency-mpc-integration.md`](./docs/solvency-mpc-integration.md) — architettura, ciclo di vita di una sessione, scelte di sicurezza, test, deploy.
+
+**Cosa è stato aggiunto rispetto all'Aave V4 originale, in breve:**
+
+- `src/spoke/SolvencyRegistry.sol` + `src/spoke/interfaces/ISolvencyRegistry.sol` — il registro on-chain di commit-reveal e la governance della composizione del consorzio.
+- `src/spoke/Spoke.sol` — due funzioni nuove: `requestBorrowSolvencyCheck()` (apre una sessione di verifica) e un overload a 4 argomenti di `borrow()` che richiede una sessione approvata; l'originale `borrow()` a 3 argomenti resta invariato.
+- `tests/contracts/spoke/solvency/` — la suite di test Foundry dedicata (commit/reveal, integrazione col prestito, governance del consorzio).
+- `scripts/deploy/RedeploySolvencyRegistry.s.sol` — script di deploy del registro.
+
+Il resto di questo documento è il README originale di Aave V4.
+
+---
+
 # Aave V4
 
 A unified liquidity layer and modular architecture that enhances capital efficiency, scalability, and risk management.
