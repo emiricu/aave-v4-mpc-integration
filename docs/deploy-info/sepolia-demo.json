@@ -1,0 +1,73 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x3De74BAe1D6AaFC7aa54b53f324427bbdA11B382",
+  "contracts": {
+    "accessManager": "0x02fF5bfE48068AcB85Df3ed5CFd5e89Aec5e4F3D",
+    "hubConfigurator": "0x1833bD4BB71F2fE059c0daC42C1847FFf76387A7",
+    "spokeConfigurator": "0x8a4Fd67811aF76A3d5db27E593861A4446Ab8434",
+    "treasurySpoke": "0xaa87247eFAa8EC12E0f1229B8d330a4108E9c67b",
+    "hub": "0x928afdD682D5378a8D8A1dF20f5FbDB363c2413c",
+    "hubImplementation": "0x3Ad91507D16784a553E5E37A2aCD666870b5cfea",
+    "irStrategy": "0xe0528B1926515b503C16C47Eb81757d682Baf89C",
+    "spoke": "0x04aF21FEE0FC12eB8B48e235B2055c494bB1D69d",
+    "spokeImplementation": "0xaD55aCAc695a0b296db3DaEc8a820Ae21EC1289F",
+    "aaveOracle": "0x850Fb9b8fF7E8D7b823F45a8BB82AC93e8A90f97",
+    "demoAsset": "0x539fc7e684Bcc92Aa5Cf7e1E820Ca06ed5891366",
+    "demoPriceFeed": "0x2fC19755bDFa99C2557E480770644C34e6ef674a",
+    "reserveId": 0,
+    "solvencyRegistry": "0x079a8095cC9ccBCF23A8743ec451C8bF2Fe759d5"
+  },
+  "consortiumNodes": {
+    "node0": "0x2707b0aa7ccBf57e57102Ad219D643855FF75BB9",
+    "node1": "0x3eB311e6C40f46E91364E08930788E1E88cd3A16",
+    "node2": "0x5BA352bf01c8f5b1905cD21fEAbeAcE22F419f09"
+  },
+  "notes": {
+    "liquidationLogicLibrary": "0x818E84198224535FAeaEc1b583d3Ff6b812A5AF3 (already deployed on Sepolia at this deterministic CREATE2 address before this project touched it; only linked here, not redeployed)",
+    "orphanedContracts": [
+      "0xdB4B5348A1EaFcC83fB446509D9c3A56C63B26c8 (aaveOracle, no code -- from the first broken AaveV4DeploySepoliaDemo.s.sol broadcast, superseded)",
+      "0xDf9c6aC06b54834783379C9Db615286Ee53B705D (spoke, no code -- superseded)",
+      "0xFc13a899f71bDBb934eA09B939039eee5F420D80 (spokeImplementation, no code -- superseded)",
+      "0xcC4a6E857fB1863bBe1cafFF4F1fBB23cb2Bc176 (SolvencyRegistry, real code but SPOKE immutable points at the dead spoke above -- superseded, unusable)",
+      "0xf2D29dd46B33A370C2197f2FF7DA44a3dD884c35 (SolvencyRegistry, real code but SPOKE immutable points at a different dead spoke from an intermediate repair attempt -- superseded, unusable)"
+    ],
+    "solvencyRegistryRedeploy": "Second redeploy: REVEAL_TARGET_BLOCK_OFFSET lowered from 60 to 20 blocks per user request, verified on-chain. Previous registries abandoned: 0xEb5eD241D1d413140dBbf3Dd7d3bB8aBAEe698CB (no revealTargetBlock field), 0xcD45CB1AD16Fee3183fFac7aDD0Fd3C2b3b0f56b (offset=60)."
+  },
+  "deployTransactions": {
+    "originalBatch_AaveV4DeploySepoliaDemo": {
+      "note": "First broadcast: AccessManager/Hub/Configurators/TreasurySpoke/MockERC20/MockPriceFeed all succeeded; the AaveV4SpokeInstanceBatch CREATE reverted (EIP-170 size limit, see FixSpokeInstance below) so spoke/spokeImplementation/aaveOracle from THIS run never got real code.",
+      "script": "scripts/deploy/AaveV4DeploySepoliaDemo.s.sol"
+    },
+    "repair_FixSpokeInstance": {
+      "note": "After lowering SpokeInstance's optimizer_runs (750->200) to fit under EIP-170, this script redeployed just the Spoke instance batch, rewired its roles, re-added the demo reserve, and deployed+wired a fresh SolvencyRegistry.",
+      "script": "scripts/deploy/FixSpokeInstance.s.sol",
+      "transactions": [
+        {
+          "action": "AaveV4SpokeInstanceBatch CREATE (spoke+spokeImplementation+aaveOracle)",
+          "hash": "0x0acce2e3715708c8c171eb5f758e3e87719dffd8f1bbe92d473b6a106f5d0bc6"
+        },
+        {
+          "action": "setTargetFunctionRole (spoke position-updater role)",
+          "hash": "0xa797b61f2710e88bc90ab04d6789e1ca38c00843fc7308bda37d459f589db3a7"
+        },
+        {
+          "action": "setTargetFunctionRole (spoke configurator role)",
+          "hash": "0xfdad94158eab3389069fe928c2ee76070a6b02329ebf42b40aa1edfb3f93ffae"
+        },
+        {
+          "action": "SpokeConfigurator.addReserve (demo reserve)",
+          "hash": "0x8542fafb8c3d910249ec43d497c0042681416e945ea9c169f9880329a94939a8"
+        },
+        {
+          "action": "SolvencyRegistry CREATE",
+          "hash": "0x279319c31dda2af4c03906dfaae2a0c2f4b5b1d7a47b87585639c3d6ce1122c5"
+        },
+        {
+          "action": "Spoke.setSolvencyRegistry",
+          "hash": "0x770efef739ff9e2b2ac6a8cd84cf4510edd99fd522e120fef4da713c4123b3a2"
+        }
+      ]
+    }
+  }
+}
