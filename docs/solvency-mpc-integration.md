@@ -338,13 +338,27 @@ Both flagged prominently in the contracts' own NatSpec, repeated here:
   on-chain consequence, exactly as it already was for a node that never
   reveals at all — this remains an operational risk, not a protocol gap.
 - Real integration of the phase-1 local simulation
-  (`~/tesi/aave-v4-mpc-node-sim/`) into the live node containers' actual
-  request pipeline — the prototype there is a standalone script, not wired
-  into `node/app/tasks.py`'s job flow, deliberately, per this update's own
-  scope (see that directory's own README for what a real integration would
-  still require).
+  (`aave-v4-mpc-node-sim/`, backed up under `orphans/` in
+  [`aave-v4-mpc-demo-backup`](https://github.com/emiricu/aave-v4-mpc-demo-backup))
+  into the live node containers' actual request pipeline — the prototype
+  there is a standalone script, not wired into `node/app/tasks.py`'s job
+  flow, deliberately, per this update's own scope (see that directory's
+  own README for what a real integration would still require). That same
+  backup repo's `node/app/hub_simulation.py` later did wire an equivalent
+  simulation into the real job flow — see its own `node/README.md`.
 - The demo console's `chain.py`/`app.py` ABI decoding of `getSession`
   (7 → 8 fields) and `SessionStarted` (5 → 6 fields) — not updated as part of
   this change, since the live `demo-node0/1/2` containers and console were
   explicitly out of scope here. The console will misdecode against a
   redeployed registry until it's updated to match.
+
+## Deploying and reproducing the demo
+
+The addresses, deploy scripts and tx hashes behind the live Sepolia demo
+are recorded in [`docs/deploy-info/`](./deploy-info/) (public data only,
+no keys). The operational side — the Docker node network, the
+commit/reveal-capable node fork, and the FastAPI console that drives a
+full cycle — lives in the separate
+[`aave-v4-mpc-demo-backup`](https://github.com/emiricu/aave-v4-mpc-demo-backup)
+repository, whose README has a full "rebuilding from scratch" walkthrough
+(fresh Sepolia deploy, fresh keys, node images, console config).
